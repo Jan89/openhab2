@@ -11,9 +11,6 @@ package org.openhab.binding.knx.internal.parser;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  *
  * @author Karel Goderis - Initial contribution
@@ -23,7 +20,7 @@ public enum KNXDPTRule {
 
     ENERGY() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.ACTIVEENERGY) && ruleSet.contains(KNXDPTEvaluation.KWH)) {
                 return KNXDPTEvaluation.KWH;
             }
@@ -41,7 +38,7 @@ public enum KNXDPTRule {
     },
     MOTION() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.ONEBIT) && ruleSet.contains(KNXDPTEvaluation.STARTOFMOTION)) {
                 return KNXDPTEvaluation.STARTOFMOTION;
             }
@@ -63,7 +60,7 @@ public enum KNXDPTRule {
     },
     TEMP_SENSOR_STATUS() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.TEMPERATURE) && ruleSet.contains(KNXDPTEvaluation.ONEBIT)) {
                 return KNXDPTEvaluation.ONEBIT;
             }
@@ -73,7 +70,7 @@ public enum KNXDPTRule {
     },
     CLIMATE() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.FOURBYTE) && ruleSet.contains(KNXDPTEvaluation.HUMIDITY)) {
                 return KNXDPTEvaluation.HUMIDITY;
             }
@@ -91,7 +88,7 @@ public enum KNXDPTRule {
     },
     POWER() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.FOURBYTE) && ruleSet.contains(KNXDPTEvaluation.POWER)) {
                 return KNXDPTEvaluation.POWER;
             }
@@ -106,7 +103,7 @@ public enum KNXDPTRule {
     },
     MEASUREMENT() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.FOURBYTE) && ruleSet.contains(KNXDPTEvaluation.MEASUREMENT)
                     && !ruleSet.contains(KNXDPTEvaluation.POWER)) {
                 return KNXDPTEvaluation.MEASUREMENT;
@@ -125,7 +122,7 @@ public enum KNXDPTRule {
     },
     ALARM() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.ONEBIT) && ruleSet.contains(KNXDPTEvaluation.ANALOG)) {
                 return KNXDPTEvaluation.ONEBIT;
             }
@@ -135,7 +132,7 @@ public enum KNXDPTRule {
     },
     DATETIME() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.DATE) && ruleSet.contains(KNXDPTEvaluation.TIME)) {
                 return KNXDPTEvaluation.DATE;
             }
@@ -153,7 +150,7 @@ public enum KNXDPTRule {
     },
     GEO() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.FOURBYTE) && ruleSet.contains(KNXDPTEvaluation.AZIMUTH)) {
                 return KNXDPTEvaluation.AZIMUTH;
             }
@@ -174,7 +171,7 @@ public enum KNXDPTRule {
     },
     OPERATINGMODE() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.MODE) && ruleSet.contains(KNXDPTEvaluation.OPERATINGMODE)) {
                 return KNXDPTEvaluation.OPERATINGMODE;
             }
@@ -188,7 +185,7 @@ public enum KNXDPTRule {
     },
     CONSUMPTION() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.CONSUMPTION) && ruleSet.contains(KNXDPTEvaluation.CONSUMPTIONRESET)) {
                 return KNXDPTEvaluation.CONSUMPTIONRESET;
             }
@@ -198,7 +195,7 @@ public enum KNXDPTRule {
     },
     FAN() {
         @Override
-        public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> ruleSet) {
+        public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> ruleSet) {
             if (ruleSet.contains(KNXDPTEvaluation.FANSPEED) && ruleSet.contains(KNXDPTEvaluation.ONEBYTE)) {
                 return KNXDPTEvaluation.FANSPEED;
             }
@@ -207,9 +204,7 @@ public enum KNXDPTRule {
         }
     };
 
-    private final static Logger logger = LoggerFactory.getLogger(KNXDPTRule.class);
-
-    public KNXDPTEvaluation Evaluate(Set<KNXDPTEvaluation> matches) {
+    public KNXDPTEvaluation evaluate(Set<KNXDPTEvaluation> matches) {
         return null;
     }
 
@@ -218,7 +213,7 @@ public enum KNXDPTRule {
         HashSet<KNXDPTEvaluation> matches = new HashSet<KNXDPTEvaluation>();
 
         for (KNXDPTRule c : KNXDPTRule.values()) {
-            KNXDPTEvaluation check = c.Evaluate(evaluations);
+            KNXDPTEvaluation check = c.evaluate(evaluations);
             if (check != null) {
                 matches.add(check);
             }
@@ -238,7 +233,7 @@ public enum KNXDPTRule {
         HashSet<KNXDPTRule> matches = new HashSet<KNXDPTRule>();
 
         for (KNXDPTRule c : KNXDPTRule.values()) {
-            KNXDPTEvaluation check = c.Evaluate(evaluations);
+            KNXDPTEvaluation check = c.evaluate(evaluations);
             if (check != null) {
                 matches.add(c);
             }

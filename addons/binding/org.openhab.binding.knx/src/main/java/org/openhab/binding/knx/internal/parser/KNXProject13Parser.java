@@ -76,8 +76,10 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
     private HashMap<String, ComObject> coRefCoMap = new HashMap<String, ComObject>();
     private HashMap<ComObjectRef, ComObject> CorCoMap = new HashMap<ComObjectRef, ComObject>();
     private HashMap<String, DeviceInstance> iaDeviceMap = new HashMap<String, DeviceInstance>();
+    private HashMap<DeviceInstance, String> deviceIaMap = new HashMap<DeviceInstance, String>();
     private HashMap<String, String> iaCorprefixMap = new HashMap<String, String>();
     private HashMap<DeviceInstance, Set<GroupAddress>> deviceGAMap = new HashMap<DeviceInstance, Set<GroupAddress>>();
+    private HashMap<GroupAddress, Set<DeviceInstance>> GAdeviceMap = new HashMap<GroupAddress, Set<DeviceInstance>>();
     private HashMap<ComObject, TranslationElement> coTranslationMap = new HashMap<ComObject, TranslationElement>();
     private HashMap<ComObjectRef, TranslationElement> corTranslationMap = new HashMap<ComObjectRef, TranslationElement>();
     private HashMap<String, Product> productMap = new HashMap<String, Product>();
@@ -346,6 +348,24 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                 }
             }
         }
+
+        for (DeviceInstance device : deviceGAMap.keySet()) {
+            Set<GroupAddress> set = deviceGAMap.get(device);
+
+            for (GroupAddress ga : set) {
+                if (!GAdeviceMap.keySet().contains(ga)) {
+                    GAdeviceMap.put(ga, new HashSet<DeviceInstance>());
+                }
+
+                GAdeviceMap.get(ga).add(device);
+            }
+        }
+
+        for (String address : iaDeviceMap.keySet()) {
+            DeviceInstance instance = iaDeviceMap.get(address);
+            deviceIaMap.put(instance, address);
+        }
+
     }
 
     @Override
@@ -367,6 +387,21 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
         }
 
         return gas;
+    }
+
+    private String verifyDPT(GroupAddress GA, String dpt, String input) {
+
+        Set<DeviceInstance> devices = GAdeviceMap.get(GA);
+        String result = dpt;
+
+        for (DeviceInstance device : devices) {
+            Map<String, String> properties = this.getDeviceProperties(deviceIaMap.get(device));
+            result = KNXDPTException.transform(result, properties.get(KNXBindingConstants.MANUFACTURER_NAME),
+                    properties.get(KNXBindingConstants.MANUFACTURER_HARDWARE_TYPE), input);
+
+        }
+
+        return result;
     }
 
     @Override
@@ -403,22 +438,25 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                 dpt = dpt == null ? convertDPT(CorCoMap.get(coR).getDatapointType()) : dpt;
 
                 // Check first on translations of the ComObject Reference itself, incl the object size
+
+                corObjectSize = coR.getObjectSize();
+                if (corObjectSize != null) {
+                    corMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corObjectSize));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, corObjectSize) : null;
+                }
+
+                TranslationElement anElement = this.corTranslationMap.get(coR);
+
+                if (anElement != null) {
+                    for (Translation translation : anElement.getTranslation()) {
+                        corTranslation.add(translation.getText());
+                        corMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(translation.getText()));
+                        dpt = (dpt != null) ? verifyDPT(GA, dpt, translation.getText()) : null;
+
+                    }
+                }
+
                 if (dpt == null) {
-
-                    corObjectSize = coR.getObjectSize();
-                    if (corObjectSize != null) {
-                        corMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corObjectSize));
-                    }
-
-                    TranslationElement anElement = this.corTranslationMap.get(coR);
-
-                    if (anElement != null) {
-                        for (Translation translation : anElement.getTranslation()) {
-                            corTranslation.add(translation.getText());
-                            corMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(translation.getText()));
-                        }
-                    }
-
                     if (corMatches.size() == 0) {
                         // no matches
                     } else if (corMatches.size() == 1) {
@@ -436,18 +474,21 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                 }
 
                 // Check the remaining attributes of the ComObjectReference itself
+
+                corFunctionText = coR.getFunctionText();
+                if (corFunctionText != null) {
+                    corAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corFunctionText));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, corFunctionText) : null;
+
+                }
+
+                corName = coR.getName();
+                if (corName != null) {
+                    corAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corName));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, corName) : null;
+                }
+
                 if (dpt == null) {
-
-                    corFunctionText = coR.getFunctionText();
-                    if (corFunctionText != null) {
-                        corAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corFunctionText));
-                    }
-
-                    corName = coR.getName();
-                    if (corName != null) {
-                        corAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(corName));
-                    }
-
                     if (corAttributeMatches.size() == 0) {
                         // no matches
                     } else if (corAttributeMatches.size() == 1) {
@@ -465,22 +506,25 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                 }
 
                 // Check then on translation of the ComObject, incl the object size
+
+                coObjectSize = CorCoMap.get(coR).getObjectSize();
+                if (coObjectSize != null) {
+                    coMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coObjectSize));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, coObjectSize) : null;
+
+                }
+
+                anElement = this.coTranslationMap.get(CorCoMap.get(coR));
+
+                if (anElement != null) {
+                    for (Translation translation : anElement.getTranslation()) {
+                        coTranslation.add(translation.getText());
+                        coMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(translation.getText()));
+                        dpt = (dpt != null) ? verifyDPT(GA, dpt, translation.getText()) : null;
+                    }
+                }
+
                 if (dpt == null) {
-
-                    coObjectSize = CorCoMap.get(coR).getObjectSize();
-                    if (coObjectSize != null) {
-                        coMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coObjectSize));
-                    }
-
-                    TranslationElement anElement = this.coTranslationMap.get(CorCoMap.get(coR));
-
-                    if (anElement != null) {
-                        for (Translation translation : anElement.getTranslation()) {
-                            coTranslation.add(translation.getText());
-                            coMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(translation.getText()));
-                        }
-                    }
-
                     if (coMatches.size() == 0) {
                         // no matches
                     } else if (coMatches.size() == 1) {
@@ -499,18 +543,20 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                 }
 
                 // Check the remaining attributes of the ComObject
+
+                coFunctionText = CorCoMap.get(coR).getFunctionText();
+                if (coFunctionText != null) {
+                    coAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coFunctionText));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, coFunctionText) : null;
+                }
+
+                coName = CorCoMap.get(coR).getName();
+                if (coName != null) {
+                    coAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coName));
+                    dpt = (dpt != null) ? verifyDPT(GA, dpt, coName) : null;
+                }
+
                 if (dpt == null) {
-
-                    coFunctionText = CorCoMap.get(coR).getFunctionText();
-                    if (coFunctionText != null) {
-                        coAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coFunctionText));
-                    }
-
-                    coName = CorCoMap.get(coR).getName();
-                    if (coName != null) {
-                        coAttributeMatches.addAll(KNXDPTEvaluation.getMatchingEvaluations(coName));
-                    }
-
                     if (coAttributeMatches.size() == 0) {
                         // no matches
                     } else if (coAttributeMatches.size() == 1) {
