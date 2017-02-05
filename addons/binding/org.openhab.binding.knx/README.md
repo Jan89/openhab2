@@ -8,15 +8,13 @@ To access your KNX bus you either need an KNX IP gateway (like e.g. the [Gira KN
 
 ## Supported Things
 
-The KNX binding supports two kinds of Bridges, and three kinds of Things to access actors on the KNX bus. There is an *ip* bridge to connect to KNX IP Gateways, and a *serial* bridge for connection over a serial port to a host-attached gateway. The configuration of the two kinds of bridges is very similar (see below).
+The KNX binding supports two kinds of Bridges, and two kinds of Things to access actors on the KNX bus. There is an *ip* bridge to connect to KNX IP Gateways, and a *serial* bridge for connection over a serial port to a host-attached gateway. The configuration of the two kinds of bridges is very similar (see below).
 
 With respect to accessing actors on the KNX bus, one has different options:
 
 1. Let the KNX binding automatically parse ETS5 generated knxproj files, and define Things automatically based on what is stored in the knxproj file. This will generate a complete set of KNX Thing and Channels 100% in line with what is defined through ETS5. 
 
-2. use a *ga* Thing to directly define a Group Address to read/write to. Channels of these Things are generic in the sense that they map onto standard Item Types
-
-3. use a *generic* Thing to represent a physical actor on the bus. In this case, a number of Channels like *switch*, *dimmer*,... can be used to group together one or more Group Addresses that make up the functionality of the given Channel
+2. use a *generic* Thing to represent a physical actor on the bus. In this case, a number of Channels like *switch*, *dimmer*,... can be used to group together one or more Group Addresses that make up the functionality of the given Channel
 
 ## Binding Configuration
 
@@ -54,19 +52,6 @@ The *serial* bridge accepts the following configuration parameters:
 
 ## Thing Configuration
 
-### *ga* Things
-
-|Name|Required|Description|Default value|
-|----|--------|-----------|-------------|
-|groupaddress|Y|The group address in x/y/z notation||
-|dpt|Y|DataPoint Type in x.y notation||
-|read|N|Flag to indicate if this group address should be read at startup||
-|interval|N|Interval between attempts to read the group address on the bus, in seconds||
-
-```
-Thing ga ga_3_2_117 [ groupaddress="3/2/117", dpt="1.001", read=true, interval=3600]
-```
-
 ### *generic* Things
 
 *generic* Things are placeholders to identify Individual Addresses / actors on the KNX bus. They have no specific function in the KNX binding, except that if the *address* is defined the binding will actively poll the Individual Address on the KNX bus to detect that the KNX actor is reachable. Under normal real world circumstances, either all devices on a bus are reachable, or either the whole bus is down. When *fetch* is set to true, the binding will read-out the memory of the KNX actor in order to detect configuration data and so forth. This is however an experimental feature very prone to the actual on the KNX bus. 
@@ -97,13 +82,9 @@ The Bridges support the following channels:
 | errorsall|Number|The number of errors that occurred on the KNX bus since the start of the binding|
 | errors5min|Number|The number of errors that occurred on the KNX bus during the last 5 minutes|
 
-### *ga* Thing Channels
-
-The *ga* Thing supports *string*, *switch*, *number*, *datetime*, *contact*, *dimmer* channels that are respectively compatible with String, Switch, Number, ... Item Types
-
 ### *generic* Thing Channels of Things defined by the end-user
 
-Different kinds of Channels are defined and can be used to group together Group Addresses. All Channel types share two configuration parameters: *read*, an optional parameter to indicate if the 'readable' group addresses of that Channel should be read at startup (default: false), and *interval*, an optional parameter that defines an interval between attempts to read the status group address on the bus, in seconds (default: 0)
+Different kinds of Channels are defined and can be used to group together Group Addresses. All Channel types share two configuration parameters: *read*, an optional parameter to indicate if the 'readable' group addresses of that Channel should be read at startup (default: false), and *interval*, an optional parameter that defines an interval between attempts to read the status group address on the bus, in seconds. When defined and set to 0, the interval is ignored (default: 0)
 
 For specific configurations reference is made to the *generic.xml* ESH-INF file of the source distribution. For example, the *statusswitch* Channel type defines two configuration parameters: *switchGA*, the group address in x/y/z notation to toggle the switch, and *statusGA*, the group address in x/y/z notation to read the switch status. Since it is about a switch, the DPT does not have to be defined, e.g. it is supposed to be 1.001. For example, the *number* Channel type is used to define Channels to read/write ordinary Numbers. 
 

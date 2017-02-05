@@ -10,7 +10,6 @@ package org.openhab.binding.knx.internal.channel;
 
 import static org.openhab.binding.knx.KNXBindingConstants.*;
 
-import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.Set;
 
@@ -423,7 +422,7 @@ public class KNXChannelSelectorProxy {
             public Set<GroupAddress> getReadAddresses(KNXChannelSelectorProxy proxy, Configuration configuration,
                     Type type) throws KNXFormatException {
                 // Generic channels have a READ configuration attribute, as we can get that from the knxproj file
-                if ((boolean) configuration.get(READ) && (((BigDecimal) configuration.get(INTERVAL)).intValue() > 0)) {
+                if ((boolean) configuration.get(READ)) {
                     return Sets.filter(Sets.newHashSet(getAddress(configuration, GROUPADDRESS)), Predicates.notNull());
                 }
 

@@ -246,18 +246,13 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
     private void scheduleReadJob(GroupAddress groupAddress, String dpt, boolean mustRead, BigDecimal readInterval) {
 
-        ReadRunnable readRunnable = null;
-        if (mustRead || (readInterval != null && readInterval.intValue() > 0)) {
-            readRunnable = new ReadRunnable(groupAddress, dpt);
+        if (mustRead) {
+            scheduler.schedule(new ReadRunnable(groupAddress, dpt), 0, TimeUnit.SECONDS);
         }
 
-        if (readRunnable != null) {
-            if (readInterval != null && readInterval.intValue() > 0) {
-                readFutures.add(
-                        scheduler.scheduleWithFixedDelay(readRunnable, 0, readInterval.intValue(), TimeUnit.SECONDS));
-            } else if (mustRead) {
-                scheduler.schedule(readRunnable, 0, TimeUnit.SECONDS);
-            }
+        if (readInterval != null && readInterval.intValue() > 0) {
+            readFutures.add(scheduler.scheduleWithFixedDelay(new ReadRunnable(groupAddress, dpt),
+                    readInterval.intValue(), readInterval.intValue(), TimeUnit.SECONDS));
         }
     }
 

@@ -547,7 +547,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
                     boolean success = false;
                     try {
-                        logger.trace("Sending read request on the KNX bus for datapoint {}",
+                        logger.trace("Sending a Group Read Request telegram for destination '{}'",
                                 datapoint.getDatapoint().getMainAddress());
                         pc.read(datapoint.getDatapoint());
                         success = true;
@@ -1256,6 +1256,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                         for (String device : devices) {
 
                             Configuration configuration = knxParser.getDeviceConfiguration(device);
+                            configuration.put(INTERVAL, new BigDecimal(3600));
+                            configuration.put(READ, true);
                             Thing theThing = factory.createThing(THING_TYPE_GENERIC, configuration, null,
                                     getThing().getUID());
 
@@ -1279,7 +1281,6 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                                         .getGroupAddressConfiguration(groupAddress, device);
                                 channelConfiguration.put(GROUPADDRESS, groupAddress);
                                 channelConfiguration.put(DPT, dpt);
-                                channelConfiguration.put(INTERVAL, new BigDecimal(3600));
 
                                 ChannelBuilder channelBuilder = ChannelBuilder
                                         .create(new ChannelUID(theThing.getUID(), id),
