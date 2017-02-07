@@ -87,9 +87,11 @@ public class KNXBindingConstants {
     public final static String STOP_MOVE_GA = "stopMoveGA";
     public final static String STOP_MOVE_STATUS_GA = "stopMoveStatusGA";
     public final static String SWITCH_GA = "switchGA";
+    public final static String TRANSMIT = "transmit";
     public final static String UNIT = "unit";
     public final static String UP_DOWN_GA = "upDownGA";
     public final static String UP_DOWN_STATUS_GA = "upDownStatusGA";
+    public final static String UPDATE = "update";
     public final static String WRITE = "write";
 
     // List of all knxproj Namespace Identifierss

@@ -1256,8 +1256,6 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                         for (String device : devices) {
 
                             Configuration configuration = knxParser.getDeviceConfiguration(device);
-                            configuration.put(INTERVAL, new BigDecimal(3600));
-                            configuration.put(READ, true);
                             Thing theThing = factory.createThing(THING_TYPE_GENERIC, configuration, null,
                                     getThing().getUID());
 
@@ -1281,6 +1279,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                                         .getGroupAddressConfiguration(groupAddress, device);
                                 channelConfiguration.put(GROUPADDRESS, groupAddress);
                                 channelConfiguration.put(DPT, dpt);
+                                configuration.put(INTERVAL, new BigDecimal(3600));
 
                                 ChannelBuilder channelBuilder = ChannelBuilder
                                         .create(new ChannelUID(theThing.getUID(), id),
@@ -1293,10 +1292,12 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                                 Channel theChannel = channelBuilder.build();
                                 channelsToAdd.add(theChannel);
 
-                                logger.info("Added the Channel {} (Type {}, DPT {}, {}/{}, '{}')", theChannel.getUID(),
-                                        theChannel.getAcceptedItemType(), theChannel.getConfiguration().get(DPT),
-                                        theChannel.getConfiguration().get(READ),
-                                        theChannel.getConfiguration().get(WRITE), theChannel.getDescription());
+                                logger.info("Added the Channel {} (Type {}, DPT {}, {}/{}/{}/{}, '{}')",
+                                        theChannel.getUID(), theChannel.getAcceptedItemType(),
+                                        theChannel.getConfiguration().get(DPT), theChannel.getConfiguration().get(READ),
+                                        theChannel.getConfiguration().get(WRITE),
+                                        theChannel.getConfiguration().get(TRANSMIT),
+                                        theChannel.getConfiguration().get(UPDATE), theChannel.getDescription());
                             }
 
                             ThingHelper.addChannelsToThing(theThing, channelsToAdd);

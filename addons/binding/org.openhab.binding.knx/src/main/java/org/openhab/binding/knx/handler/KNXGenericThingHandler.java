@@ -148,6 +148,8 @@ public class KNXGenericThingHandler extends BaseThingHandler
                             .addAll(knxChannelSelectorProxy.getReadAddresses(selector, channelConfiguration, null));
                     groupAddresses
                             .addAll(knxChannelSelectorProxy.getWriteAddresses(selector, channelConfiguration, null));
+                    groupAddresses
+                            .addAll(knxChannelSelectorProxy.getTransmitAddresses(selector, channelConfiguration, null));
                 } catch (KNXFormatException e) {
                     logger.error(
                             "An exception occurred while adding a group address to the addresses to be listened to : '{}'",
@@ -500,8 +502,12 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
             if (selector != null) {
                 try {
-                    for (GroupAddress address : knxChannelSelectorProxy.getReadAddresses(selector, channelConfiguration,
-                            null)) {
+                    Set<GroupAddress> addresses = knxChannelSelectorProxy.getReadAddresses(selector,
+                            channelConfiguration, null);
+                    addresses
+                            .addAll(knxChannelSelectorProxy.getTransmitAddresses(selector, channelConfiguration, null));
+
+                    for (GroupAddress address : addresses) {
                         processDataReceived(bridge, destination, asdu,
                                 knxChannelSelectorProxy.getDPT(address, selector, channelConfiguration, null), address,
                                 channel.getUID());

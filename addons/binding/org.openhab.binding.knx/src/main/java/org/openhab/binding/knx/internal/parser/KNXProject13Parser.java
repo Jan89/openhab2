@@ -650,6 +650,40 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                                 }
                             }
                         }
+
+                        if (cor.getTransmitFlag() != null) {
+                            if (cor.getTransmitFlag().equals("Enabled")) {
+                                configuration.put(KNXBindingConstants.TRANSMIT, true);
+                            } else if (cor.getTransmitFlag().equals("Disabled")) {
+                                configuration.put(KNXBindingConstants.TRANSMIT, false);
+                            }
+                        } else {
+                            ComObject co = CorCoMap.get(cor);
+                            if (co != null) {
+                                if (co.getTransmitFlag() != null && co.getTransmitFlag().equals("Enabled")) {
+                                    configuration.put(KNXBindingConstants.TRANSMIT, true);
+                                } else if (co.getTransmitFlag() != null && co.getTransmitFlag().equals("Disabled")) {
+                                    configuration.put(KNXBindingConstants.TRANSMIT, false);
+                                }
+                            }
+                        }
+
+                        if (cor.getUpdateFlag() != null) {
+                            if (cor.getUpdateFlag().equals("Enabled")) {
+                                configuration.put(KNXBindingConstants.UPDATE, true);
+                            } else if (cor.getUpdateFlag().equals("Disabled")) {
+                                configuration.put(KNXBindingConstants.UPDATE, false);
+                            }
+                        } else {
+                            ComObject co = CorCoMap.get(cor);
+                            if (co != null) {
+                                if (co.getUpdateFlag() != null && co.getUpdateFlag().equals("Enabled")) {
+                                    configuration.put(KNXBindingConstants.UPDATE, true);
+                                } else if (co.getUpdateFlag() != null && co.getUpdateFlag().equals("Disabled")) {
+                                    configuration.put(KNXBindingConstants.UPDATE, false);
+                                }
+                            }
+                        }
                     }
                 }
             }
