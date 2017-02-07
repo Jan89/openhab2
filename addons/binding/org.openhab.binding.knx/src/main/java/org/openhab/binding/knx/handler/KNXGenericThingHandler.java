@@ -28,13 +28,13 @@ import org.eclipse.smarthome.core.thing.ThingStatus;
 import org.eclipse.smarthome.core.thing.ThingStatusDetail;
 import org.eclipse.smarthome.core.thing.ThingStatusInfo;
 import org.eclipse.smarthome.core.thing.binding.BaseThingHandler;
+import org.eclipse.smarthome.core.thing.link.ItemChannelLinkRegistry;
 import org.eclipse.smarthome.core.types.Command;
 import org.eclipse.smarthome.core.types.RefreshType;
 import org.eclipse.smarthome.core.types.State;
 import org.eclipse.smarthome.core.types.Type;
 import org.openhab.binding.knx.GroupAddressListener;
 import org.openhab.binding.knx.IndividualAddressListener;
-import org.openhab.binding.knx.handler.KNXBridgeBaseThingHandler.EventSource;
 import org.openhab.binding.knx.internal.channel.KNXChannelSelectorProxy;
 import org.openhab.binding.knx.internal.channel.KNXChannelSelectorProxy.KNXChannelSelector;
 import org.openhab.binding.knx.internal.dpt.KNXCoreTypeMapper;
@@ -63,6 +63,9 @@ public class KNXGenericThingHandler extends BaseThingHandler
     private final Logger logger = LoggerFactory.getLogger(KNXGenericThingHandler.class);
 
     protected KNXChannelSelectorProxy knxChannelSelectorProxy = new KNXChannelSelectorProxy();
+
+    protected ItemChannelLinkRegistry itemChannelLinkRegistry;
+    protected ArrayList<ChannelUID> blockedChannels = new ArrayList<ChannelUID>();
 
     // the physical address of the KNX actor represented by this Thing
     protected IndividualAddress address;
@@ -106,8 +109,9 @@ public class KNXGenericThingHandler extends BaseThingHandler
     // Property IDs for device information;
     private static final int HARDWARE_TYPE = 78;
 
-    public KNXGenericThingHandler(Thing thing) {
+    public KNXGenericThingHandler(Thing thing, ItemChannelLinkRegistry registry) {
         super(thing);
+        this.itemChannelLinkRegistry = registry;
     }
 
     @Override
@@ -307,10 +311,33 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
         logger.trace("Handling a State ({}) update for Channel {}", newState, channelUID.getId());
 
-        if (((KNXBridgeBaseThingHandler) getBridge().getHandler()).hasEvent(channelUID, newState, 50, 500)) {
+        // There are multiple ways to prevent circular loops between the KNX bus and the OH runtume. The first option is
+        // to include https://github.com/eclipse/smarthome/pull/2881 in the ESH runtime, and configure manually the
+        // desired behavior Item by Item. A second option is to use a trace mechanism that tracks what States and
+        // Commands were received in the near past, and then eliminate those that resemble a duplicae event. The last
+        // option is to make the KNXThingHandlers use the ItemChannelLinkRegistry infrastructure to detect what Items
+        // Channels are bound to, and put Channels that are originating from other KNX Things into a blocked list, and
+        // filter these out when handleCommand and handleUpdate are called.
+        //
+        // The first option was vetoed. The second option does not yield deterministic behavior. The code for the second
+        // option is still included for discussion purposes but is commented out. The default "look-back" interval of
+        // 500ms not adequate, and putting a higher value leads to missed events. The third option is the only one
+        // remaining that provided a behavior similar to the KNX 1.x binding, which in fact only passes on States and
+        // Command to Channels that are bound to the Item and that are not originating from the KNX binding, e.g.
+        // "inter"-binding bridging is allowed, but "intra"-binding bridging is filtered out. The third option is
+
+        // "Second option"
+        // if (((KNXBridgeBaseThingHandler) getBridge().getHandler()).hasEvent(channelUID, newState, 50, 500)) {
+        // return;
+        // } else {
+        // ((KNXBridgeBaseThingHandler) getBridge().getHandler()).logEvent(channelUID, newState);
+        // }
+
+        // "Third option"
+        if (blockedChannels.contains(channelUID)) {
+            logger.trace("Removing channel '{}' from the list of blocked channels", channelUID);
+            blockedChannels.remove(channelUID);
             return;
-        } else {
-            ((KNXBridgeBaseThingHandler) getBridge().getHandler()).logEvent(channelUID, newState);
         }
 
         Configuration channelConfiguration = getThing().getChannel(channelUID.getId()).getConfiguration();
@@ -364,10 +391,16 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
         logger.trace("Handling a Command ({})  for Channel {}", command, channelUID.getId());
 
-        if (((KNXBridgeBaseThingHandler) getBridge().getHandler()).hasEvent(channelUID, command, 50, 500)) {
+        // if (((KNXBridgeBaseThingHandler) getBridge().getHandler()).hasEvent(channelUID, command, 50, 500)) {
+        // return;
+        // } else {
+        // ((KNXBridgeBaseThingHandler) getBridge().getHandler()).logEvent(channelUID, command);
+        // }
+
+        if (blockedChannels.contains(channelUID)) {
+            logger.trace("Remvoing channel '{}' from the list of blocked channels", channelUID);
+            blockedChannels.remove(channelUID);
             return;
-        } else {
-            ((KNXBridgeBaseThingHandler) getBridge().getHandler()).logEvent(channelUID, command);
         }
 
         Configuration channelConfiguration = getThing().getChannel(channelUID.getId()).getConfiguration();
@@ -496,7 +529,20 @@ public class KNXGenericThingHandler extends BaseThingHandler
                 Type type = bridge.getType(destination, dpt, asdu);
 
                 if (type != null) {
-                    bridge.logEvent(EventSource.EMPTY, channelUID, type);
+                    // bridge.logEvent(EventSource.EMPTY, channelUID, type);
+
+                    Set<String> linkedItems = itemChannelLinkRegistry.getLinkedItemNames(channelUID);
+                    for (String anItem : linkedItems) {
+                        Set<ChannelUID> boundChannels = itemChannelLinkRegistry.getBoundChannels(anItem);
+                        for (ChannelUID aBoundChannel : boundChannels) {
+                            if (aBoundChannel.getBindingId().equals(getThing().getUID().getBindingId())
+                                    && !aBoundChannel.getAsString().equals(channelUID.getAsString())) {
+                                logger.trace("Adding channel '{}' of Item '{}' the list of blocked channels",
+                                        aBoundChannel, anItem);
+                                blockedChannels.add(aBoundChannel);
+                            }
+                        }
+                    }
                     if (type instanceof State) {
                         updateState(channelUID, (State) type);
                     } else {
@@ -662,8 +708,7 @@ public class KNXGenericThingHandler extends BaseThingHandler
                     // TODO : According to the KNX specs, devices should expose the PID.IO_LIST property in the DEVICE
                     // object, but it seems that a lot, if not all, devices do not do this. In this list we can find out
                     // what other kind of objects the device is exposing. Most devices do implement some set of objects,
-                    // we
-                    // will just go ahead and try to read them out irrespective of what is in the IO_LIST
+                    // we will just go ahead and try to read them out irrespective of what is in the IO_LIST
 
                     Thread.sleep(OPERATION_INTERVAL);
                     byte[] tableaddress = ((KNXBridgeBaseThingHandler) getBridge().getHandler()).readDeviceProperties(

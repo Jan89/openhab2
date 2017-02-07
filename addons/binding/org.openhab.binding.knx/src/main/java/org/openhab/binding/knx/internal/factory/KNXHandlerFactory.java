@@ -137,7 +137,7 @@ public class KNXHandlerFactory extends BaseThingHandlerFactory implements AutoUp
             registerProjectProviderService(handler);
             return handler;
         } else if (thing.getThingTypeUID().equals(THING_TYPE_GENERIC)) {
-            return new KNXGenericThingHandler(thing);
+            return new KNXGenericThingHandler(thing, itemChannelLinkRegistry);
         }
 
         return null;
