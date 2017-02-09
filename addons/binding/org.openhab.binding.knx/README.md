@@ -16,6 +16,8 @@ With respect to accessing actors on the KNX bus, one has different options:
 
 2. use a *generic* Thing to represent a physical actor on the bus. In this case, a number of Channels like *switch*, *dimmer*,... can be used to group together one or more Group Addresses that make up the functionality of the given Channel
 
+The KNX binding also sports an autodiscovery feature. The discovery feature will scan the KNX bus for Individual Addresses it sees flying by, and will create a *generic* Thing for each actor it sees. However, because of the dynamic nature of channels (see below), no channels will be added to this Thing. There is experimental code in the binding to read-out the configuration tables of the actor over the bus. Beware, this is not the same as parsing the knxproj file mentioned here above.
+
 ## Binding Configuration
 
 The binding itself does not require any special configuration. 
@@ -71,7 +73,7 @@ In order to enable automatic parsing of the knxproj files provided to the runtim
 org.openhab.binding.knx.folder:knx=knxproj
 ```
 
-has to be added to *services.cfg* in the etc folder. In the conf folder a subdirectory *knx* should be created, and the knxproj files, as exported by the ETS5 application can be directly placed in that folder
+has to be added to *services.cfg* in the etc folder. In the *conf* folder a subdirectory *knx* should be created, and the knxproj files, as exported by the ETS5 application, can be directly placed in that folder
 
 ## Channels
 
