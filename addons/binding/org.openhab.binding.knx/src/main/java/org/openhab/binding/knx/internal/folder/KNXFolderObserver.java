@@ -39,6 +39,7 @@ import org.eclipse.smarthome.core.service.AbstractWatchService;
 import org.openhab.binding.knx.KNXProjectProvider;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -49,6 +50,8 @@ import org.slf4j.LoggerFactory;
  *
  */
 public class KNXFolderObserver extends AbstractWatchService implements ManagedService {
+
+    private static Logger logger = LoggerFactory.getLogger(KNXFolderObserver.class);
 
     private ArrayList<KNXProjectProvider> knxProjectProviders = new ArrayList<KNXProjectProvider>();
 
@@ -89,6 +92,7 @@ public class KNXFolderObserver extends AbstractWatchService implements ManagedSe
         if (subDir != null && MapUtils.isNotEmpty(folderFileExtMap)) {
             String folderName = subDir.getFileName().toString();
             if (folderFileExtMap.containsKey(folderName)) {
+                logger.trace("Registering a directory watch service on {}", subDir.toAbsolutePath().toString());
                 return subDir.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
             }
         }
@@ -262,11 +266,14 @@ public class KNXFolderObserver extends AbstractWatchService implements ManagedSe
                 synchronized (KNXFolderObserver.class) {
                     if ((kind == ENTRY_CREATE || kind == ENTRY_MODIFY) && file != null) {
                         if (checkExtension(folderFileExtMap, file.getName())) {
+                            logger.trace("Adding or refreshing the project contained in {}",
+                                    file.getAbsolutePath().toString());
                             knxProjectProvider.addOrRefreshProject(file);
                         } else {
                             ignoredFiles.add(file);
                         }
                     } else if (kind == ENTRY_DELETE && file != null) {
+                        logger.trace("Removing the project contained in {}", file.getAbsolutePath().toString());
                         knxProjectProvider.removeProject(file);
                     }
                 }
@@ -280,6 +287,7 @@ public class KNXFolderObserver extends AbstractWatchService implements ManagedSe
     private static boolean checkExtension(Map<String, String[]> folderFileExtMap, String filename) {
         if (StringUtils.isNotBlank(filename) && MapUtils.isNotEmpty(folderFileExtMap)) {
 
+            logger.trace("Verifying the extension of file {}", filename);
             String extension = getExtension(filename);
 
             if (StringUtils.isNotBlank(extension)) {
@@ -301,6 +309,7 @@ public class KNXFolderObserver extends AbstractWatchService implements ManagedSe
     private static File getFileByFileExtMap(Map<String, String[]> folderFileExtMap, String filename) {
         if (StringUtils.isNotBlank(filename) && MapUtils.isNotEmpty(folderFileExtMap)) {
 
+            logger.trace("Looking up the File for file {}", filename);
             String extension = getExtension(filename);
 
             if (StringUtils.isNotBlank(extension)) {
@@ -328,6 +337,7 @@ public class KNXFolderObserver extends AbstractWatchService implements ManagedSe
      * @return the corresponding {@link File}
      */
     private static File getFile(String filename) {
+        logger.trace("The config folder is located at {}", ConfigConstants.getConfigFolder());
         File folder = new File(ConfigConstants.getConfigFolder() + File.separator + filename);
 
         return folder;
