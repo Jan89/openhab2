@@ -404,6 +404,25 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
         return result;
     }
 
+    private String verifyDPTs(GroupAddress GA, Set<String> dpts, String input) {
+
+        Set<DeviceInstance> devices = GAdeviceMap.get(GA);
+        String result = null;
+
+        for (DeviceInstance device : devices) {
+            Map<String, String> properties = this.getDeviceProperties(deviceIaMap.get(device));
+            result = KNXDPTException.transform(dpts, properties.get(KNXBindingConstants.MANUFACTURER_NAME),
+                    properties.get(KNXBindingConstants.MANUFACTURER_HARDWARE_TYPE), input);
+
+        }
+
+        if (result == null && dpts.size() > 0) {
+            return (String) dpts.toArray()[0];
+        }
+
+        return result;
+    }
+
     @Override
     public String getDPT(String groupAddress) {
 
@@ -426,6 +445,8 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
         Set<KNXDPTRule> coRules = new HashSet<KNXDPTRule>();
         Set<KNXDPTEvaluation> coAttributeMatches = new HashSet<KNXDPTEvaluation>();
         Set<KNXDPTRule> coAttributeRules = new HashSet<KNXDPTRule>();
+
+        Set<String> dpts = new HashSet<String>();
 
         try {
             GroupAddress GA = gaGAMap.get(groupAddress);
@@ -590,9 +611,16 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                             "The CommunicationObject function text '{}' and name '{}' matched '{}' which were positively evaluated by rules '{}'",
                             coFunctionText, coName, coAttributeMatches, coAttributeRules);
                 } else {
-                    break;
+                    dpts.add(dpt);
                 }
             }
+
+            if (dpts.size() > 1) {
+                dpt = verifyDPTs(GA, dpts, null);
+                logger.warn("Multiple DPT are found for Group Address {} : {}. We settle for {}", groupAddress, dpts,
+                        dpt);
+            }
+
         } catch (Exception e) {
             logger.trace("An exception occurred while evaluating a DPT : '{}'", e.getMessage(), e);
         }
