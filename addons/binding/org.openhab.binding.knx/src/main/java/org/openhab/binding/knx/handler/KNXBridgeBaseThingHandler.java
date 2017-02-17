@@ -159,6 +159,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
     // Data structures related to the various jobs
     private ScheduledFuture<?> reconnectJob;
     private ScheduledFuture<?> busJob;
+    private ScheduledFuture<?> zipJob;
     private List<ScheduledFuture<?>> readFutures = new ArrayList<ScheduledFuture<?>>();
 
     public boolean shutdown = false;
@@ -190,6 +191,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
         errorsSinceInterval = 0;
 
         LogManager.getManager().addWriter(null, logAdapter);
+
+        updateStatus(ThingStatus.UNKNOWN);
 
         scheduler.schedule(connectRunnable, 0, TimeUnit.SECONDS);
     }
@@ -276,19 +279,30 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
         return ((Boolean) getConfig().get(ENABLE_DISCOVERY));
     }
 
-    public synchronized ProcessCommunicator getCommunicator() {
-        if (link != null && !link.isOpen()) {
-            connect();
-        }
-        return pc;
-    }
-
     public abstract void establishConnection() throws KNXException;
 
     Runnable connectRunnable = new Runnable() {
         @Override
         public void run() {
             connect();
+        }
+    };
+
+    Runnable reconnectRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (shutdown) {
+                reconnectJob.cancel(true);
+            } else {
+                updateStatus(ThingStatus.OFFLINE);
+
+                logger.info("Trying to reconnect to KNX...");
+                connect();
+
+                if (link.isOpen()) {
+                    reconnectJob.cancel(true);
+                }
+            }
         }
     };
 
@@ -320,30 +334,12 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             nll = new NetworkLinkListener() {
                 @Override
                 public void linkClosed(CloseEvent e) {
-
-                    updateStatus(ThingStatus.OFFLINE);
-
                     if (!link.isOpen() && !(CloseEvent.USER_REQUEST == e.getInitiator()) && !shutdown) {
                         logger.warn("KNX link has been lost (reason: {} on object {}) - reconnecting...", e.getReason(),
                                 e.getSource().toString());
                         if (((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue() > 0) {
                             logger.info("KNX link will be retried in "
                                     + ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue() + " seconds");
-
-                            Runnable reconnectRunnable = new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (shutdown) {
-                                        reconnectJob.cancel(true);
-                                    } else {
-                                        logger.info("Trying to reconnect to KNX...");
-                                        connect();
-                                        if (link.isOpen()) {
-                                            reconnectJob.cancel(true);
-                                        }
-                                    }
-                                }
-                            };
 
                             reconnectJob = scheduler.scheduleWithFixedDelay(reconnectRunnable,
                                     ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
@@ -431,7 +427,9 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
                 @Override
                 public void detached(DetachEvent e) {
-                    logger.error("Received detach Event");
+                    logger.error("Received detach Event from {}", e.getSource());
+                    logger.trace("DE {} ZipJob Done {} Cancelled {}", Thread.currentThread().getName(), zipJob.isDone(),
+                            zipJob.isCancelled());
                 }
 
                 @Override
@@ -480,6 +478,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             errorsSinceStart = 0;
             errorsSinceInterval = 0;
 
+            logger.trace("{} ZipJob Done {} Cancelled {}", Thread.currentThread().getName(), zipJob.isDone(),
+                    zipJob.isCancelled());
             busJob = scheduler.scheduleWithFixedDelay(new BusRunnable(), 0,
                     ((BigDecimal) getConfig().get(READING_PAUSE)).intValue(), TimeUnit.MILLISECONDS);
 
@@ -815,7 +815,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
         if (dpt != null && address != null && value != null) {
 
-            ProcessCommunicator pc = getCommunicator();
+            // ProcessCommunicator pc = getCommunicator();
             Datapoint datapoint = new CommandDP(address, getThing().getUID().toString(), 0, dpt);
 
             if (pc != null && datapoint != null) {
@@ -833,7 +833,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                             new Object[] { value, datapoint, e.getMessage() });
                     try {
                         // do a second try, maybe the reconnection was successful
-                        pc = getCommunicator();
+                        // pc = getCommunicator();
                         pc.write(datapoint, toDPTValue(value, datapoint.getDPT()));
                         logger.debug("Wrote value '{}' to datapoint '{}' on second try", value, datapoint);
                     } catch (KNXException e1) {
@@ -844,6 +844,9 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                 }
             } else {
                 logger.error("Could not get hold of KNX Process Communicator");
+                reconnectJob = scheduler.scheduleWithFixedDelay(reconnectRunnable,
+                        ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
+                        ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
             }
         }
     }
@@ -1156,10 +1159,11 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
             if (knxProj != null && knxProj.equals(file.getName())) {
                 if (knxProjects.get(file) != null) {
+                    logger.trace("Ah... removing the project file {}", file);
                     removeProject(file);
                 }
 
-                scheduler.schedule(new ZipRunnable(file, openInputStream), 0, TimeUnit.SECONDS);
+                zipJob = scheduler.schedule(new ZipRunnable(file, openInputStream), 0, TimeUnit.SECONDS);
             }
 
         } catch (IOException e) {
@@ -1179,6 +1183,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
         @Override
         public void run() {
+
+            logger.trace("Unzipping the KNX Project file");
 
             byte[] buffer = new byte[1024];
             HashMap<String, String> xmlRepository = new HashMap<String, String>();
@@ -1213,11 +1219,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                 zis.closeEntry();
                 zis.close();
 
-            } catch (Exception e) {
-                logger.error("An exception occurred while parsing the KNX Project file : '{}'", file.getName());
-            }
+                logger.trace("Processing the XML Repository");
 
-            try {
                 if (xmlRepository.get("knx_master.xml") != null) {
 
                     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -1240,16 +1243,13 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                 } else {
                     logger.warn("The KNX Project does not contain any master data");
                 }
-            } catch (Exception e) {
-                logger.error("An exception occurred while setting up the KNX Project Parser : {}", e.getMessage(), e);
-            }
 
-            if (knxParser != null) {
-                knxProjects.put(file, xmlRepository);
-                knxParser.addXML(xmlRepository);
-                knxParser.postProcess();
+                if (knxParser != null) {
+                    logger.trace("Feeding the XML Repository to the KNX Project Parser");
+                    knxProjects.put(file, xmlRepository);
+                    knxParser.addXML(xmlRepository);
+                    knxParser.postProcess();
 
-                try {
                     if (factory != null) {
                         Set<String> devices = knxParser.getIndividualAddresses();
                         HashMap<ThingUID, Thing> newThings = new HashMap<ThingUID, Thing>();
@@ -1340,12 +1340,17 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                             }
                         }
                     }
-                } catch (Exception e) {
-                    logger.trace("An exception occurred while creating the Things to be provided : '{}'",
-                            e.getMessage(), e);
                 }
+
+                // Free some memory
+                knxParser = null;
+
+            } catch (Exception e) {
+                logger.error("An exception occurred while parsing the KNX Project file : '{}' : {}", file.getName(),
+                        e.getMessage(), e);
             }
         }
+
     };
 
     public enum EventSource {

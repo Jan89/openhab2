@@ -17,7 +17,6 @@ import java.util.Set;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import javax.xml.transform.stream.StreamSource;
 
@@ -111,9 +110,10 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
 
     @Override
     public void addXML(String xmlName, String content) {
-        super.addXML(xmlName, content);
 
         try {
+            super.addXML(xmlName, content);
+
             if (xmlName != null && content != null) {
 
                 JAXBContext jaxbContext = JAXBContext.newInstance(KNX.class);
@@ -307,39 +307,43 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                     }
                 }
             }
-        } catch (JAXBException e) {
-            logger.error("An exception occurred while unmarshalling the KNX project data : '{}'", e.getMessage(), e);
+        } catch (Exception e) {
+            logger.error("An exception occurred while unmarshalling the KNX project data : '{}' : {}", e.getMessage(),
+                    e);
         }
     }
 
     @Override
     public void postProcess() {
 
-        if (knxZero != null) {
-            Installation installation = knxZero.getProject().getInstallations().getInstallation();
+        try {
 
-            for (Area area : installation.getTopology().getArea()) {
-                for (Line areaLine : area.getLine()) {
-                    for (DeviceInstance deviceInstance : areaLine.getDeviceInstance()) {
-                        ComObjectInstanceRefs comObjectInstanceRefs = deviceInstance.getComObjectInstanceRefs();
-                        if (comObjectInstanceRefs != null) {
-                            for (ComObjectInstanceRef comObjectInstanceRef : comObjectInstanceRefs
-                                    .getComObjectInstanceRef()) {
-                                Connectors connectors = comObjectInstanceRef.getConnectors();
-                                if (connectors != null) {
-                                    for (JAXBElement<GroupAddressReference> groupAddressReference : connectors
-                                            .getSendOrReceive()) {
-                                        if (GACorMap.get(gaRefGAMap.get(
-                                                groupAddressReference.getValue().getGroupAddressRefId())) == null) {
-                                            GACorMap.put(
-                                                    gaRefGAMap.get(
-                                                            groupAddressReference.getValue().getGroupAddressRefId()),
-                                                    new ArrayList<ComObjectRef>());
+            if (knxZero != null) {
+                Installation installation = knxZero.getProject().getInstallations().getInstallation();
+
+                for (Area area : installation.getTopology().getArea()) {
+                    for (Line areaLine : area.getLine()) {
+                        for (DeviceInstance deviceInstance : areaLine.getDeviceInstance()) {
+                            ComObjectInstanceRefs comObjectInstanceRefs = deviceInstance.getComObjectInstanceRefs();
+                            if (comObjectInstanceRefs != null) {
+                                for (ComObjectInstanceRef comObjectInstanceRef : comObjectInstanceRefs
+                                        .getComObjectInstanceRef()) {
+                                    Connectors connectors = comObjectInstanceRef.getConnectors();
+                                    if (connectors != null) {
+                                        for (JAXBElement<GroupAddressReference> groupAddressReference : connectors
+                                                .getSendOrReceive()) {
+                                            if (GACorMap.get(gaRefGAMap.get(
+                                                    groupAddressReference.getValue().getGroupAddressRefId())) == null) {
+                                                GACorMap.put(
+                                                        gaRefGAMap.get(groupAddressReference.getValue()
+                                                                .getGroupAddressRefId()),
+                                                        new ArrayList<ComObjectRef>());
+                                            }
+
+                                            List<ComObjectRef> corList = GACorMap.get(gaRefGAMap
+                                                    .get(groupAddressReference.getValue().getGroupAddressRefId()));
+                                            corList.add(corRefCorMap.get(comObjectInstanceRef.getRefId()));
                                         }
-
-                                        List<ComObjectRef> corList = GACorMap.get(gaRefGAMap
-                                                .get(groupAddressReference.getValue().getGroupAddressRefId()));
-                                        corList.add(corRefCorMap.get(comObjectInstanceRef.getRefId()));
                                     }
                                 }
                             }
@@ -347,25 +351,26 @@ public class KNXProject13Parser extends AbstractKNXProjectParser {
                     }
                 }
             }
-        }
 
-        for (DeviceInstance device : deviceGAMap.keySet()) {
-            Set<GroupAddress> set = deviceGAMap.get(device);
+            for (DeviceInstance device : deviceGAMap.keySet()) {
+                Set<GroupAddress> set = deviceGAMap.get(device);
 
-            for (GroupAddress ga : set) {
-                if (!GAdeviceMap.keySet().contains(ga)) {
-                    GAdeviceMap.put(ga, new HashSet<DeviceInstance>());
+                for (GroupAddress ga : set) {
+                    if (!GAdeviceMap.keySet().contains(ga)) {
+                        GAdeviceMap.put(ga, new HashSet<DeviceInstance>());
+                    }
+
+                    GAdeviceMap.get(ga).add(device);
                 }
-
-                GAdeviceMap.get(ga).add(device);
             }
-        }
 
-        for (String address : iaDeviceMap.keySet()) {
-            DeviceInstance instance = iaDeviceMap.get(address);
-            deviceIaMap.put(instance, address);
+            for (String address : iaDeviceMap.keySet()) {
+                DeviceInstance instance = iaDeviceMap.get(address);
+                deviceIaMap.put(instance, address);
+            }
+        } catch (Exception e) {
+            logger.error("An exception occurred while post processing the KNX project data : '{}'", e.getMessage(), e);
         }
-
     }
 
     @Override
