@@ -15,14 +15,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Map;
-import java.util.Set;
 
 import org.eclipse.smarthome.config.core.Configuration;
 import org.eclipse.smarthome.config.discovery.DiscoveryService;
-import org.eclipse.smarthome.core.autoupdate.AutoUpdateBindingConfigProvider;
 import org.eclipse.smarthome.core.i18n.LocaleProvider;
 import org.eclipse.smarthome.core.thing.Bridge;
-import org.eclipse.smarthome.core.thing.ChannelUID;
 import org.eclipse.smarthome.core.thing.Thing;
 import org.eclipse.smarthome.core.thing.ThingProvider;
 import org.eclipse.smarthome.core.thing.ThingTypeUID;
@@ -49,7 +46,7 @@ import com.google.common.collect.Lists;
  *
  * @author Karel Goderis - Initial contribution
  */
-public class KNXHandlerFactory extends BaseThingHandlerFactory implements AutoUpdateBindingConfigProvider {
+public class KNXHandlerFactory extends BaseThingHandlerFactory {
 
     public final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(THING_TYPE_GENERIC,
             THING_TYPE_IP_BRIDGE, THING_TYPE_SERIAL_BRIDGE);
@@ -183,26 +180,6 @@ public class KNXHandlerFactory extends BaseThingHandlerFactory implements AutoUp
                 .registerService(KNXProjectProvider.class.getName(), bridgeHandler, new Hashtable<String, Object>()));
         this.thingProviderServiceRegs.put(bridgeHandler.getThing().getUID(), bundleContext
                 .registerService(ThingProvider.class.getName(), bridgeHandler, new Hashtable<String, Object>()));
-    }
-
-    @Override
-    public Boolean autoUpdate(String itemName) {
-        // The principle we maintain is that it is up to KNX devices to emit the actual state of a variable, rather
-        // than us auto-updating the channel. Most KNX devices have an Communication Object for both writing/updating a
-        // variable, and next to that another Communication Object to read out the state, or the device (T)ransmits the
-        // actual state after an update. In other words, implementing classes can either do nothing and wait for a
-        // (T)ransmit, or implement an explicit read operation to read out the actual value from the KNX device
-
-        if (itemChannelLinkRegistry != null) {
-            Set<ChannelUID> boundChannels = itemChannelLinkRegistry.getBoundChannels(itemName);
-            for (ChannelUID channelUID : boundChannels) {
-                if (channelUID.getBindingId().equals(BINDING_ID)) {
-                    return false;
-                }
-            }
-        }
-
-        return null;
     }
 
     public ThingType getThingType(ThingTypeUID thingTypeUID) {

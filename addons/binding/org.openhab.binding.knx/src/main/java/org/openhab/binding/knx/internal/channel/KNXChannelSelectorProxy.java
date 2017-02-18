@@ -452,6 +452,17 @@ public class KNXChannelSelectorProxy {
             }
 
             @Override
+            public Set<GroupAddress> getUpdateAddresses(KNXChannelSelectorProxy proxy, Configuration configuration,
+                    Type type) throws KNXFormatException {
+                // Generic channels have a TRANSMIT configuration attribute, as we can get that from the knxproj file
+                if ((boolean) configuration.get(UPDATE)) {
+                    return Sets.filter(Sets.newHashSet(getAddress(configuration, GROUPADDRESS)), Predicates.notNull());
+                }
+
+                return Sets.newHashSet();
+            }
+
+            @Override
             public Type convertType(KNXChannelSelectorProxy knxChannelSelectorProxy, Configuration configuration,
                     Type type) {
                 Class<? extends Type> convertedType = KNXCoreTypeMapper.toTypeClass((String) configuration.get(DPT));
@@ -494,6 +505,11 @@ public class KNXChannelSelectorProxy {
         }
 
         public Set<GroupAddress> getTransmitAddresses(KNXChannelSelectorProxy proxy, Configuration configuration,
+                Type type) throws KNXFormatException {
+            return Sets.newHashSet();
+        }
+
+        public Set<GroupAddress> getUpdateAddresses(KNXChannelSelectorProxy proxy, Configuration configuration,
                 Type type) throws KNXFormatException {
             return Sets.newHashSet();
         }
@@ -542,6 +558,11 @@ public class KNXChannelSelectorProxy {
     public Set<GroupAddress> getTransmitAddresses(KNXChannelSelector selector, Configuration configuration, Type type)
             throws KNXFormatException {
         return selector.getTransmitAddresses(this, configuration, type);
+    }
+
+    public Set<GroupAddress> getUpdateAddresses(KNXChannelSelector selector, Configuration configuration, Type type)
+            throws KNXFormatException {
+        return selector.getUpdateAddresses(this, configuration, type);
     }
 
     public Type convertType(KNXChannelSelector selector, Configuration configuration, Type type) {

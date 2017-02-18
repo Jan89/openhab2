@@ -8,9 +8,6 @@
  */
 package org.openhab.binding.knx;
 
-import org.openhab.binding.knx.handler.KNXBridgeBaseThingHandler;
-
-import tuwien.auto.calimero.GroupAddress;
 import tuwien.auto.calimero.IndividualAddress;
 
 /**
@@ -20,7 +17,7 @@ import tuwien.auto.calimero.IndividualAddress;
  *
  * @author Karel Goderis - Initial contribution
  */
-public interface IndividualAddressListener {
+public interface IndividualAddressListener extends TelegramListener {
 
     /**
      * Called to verify if the IndividualAddressListener has an interest in the given Individual Address
@@ -28,38 +25,4 @@ public interface IndividualAddressListener {
      * @param destination
      */
     public boolean listensTo(IndividualAddress source);
-
-    /**
-     *
-     * Called when the KNX bridge receives a group write telegram
-     *
-     * @param bridge
-     * @param destination
-     * @param asdu
-     */
-    public void onGroupWrite(KNXBridgeBaseThingHandler bridge, IndividualAddress source, GroupAddress destination,
-            byte[] asdu);
-
-    /**
-     *
-     * Called when the KNX bridge receives a group read telegram
-     *
-     * @param bridge
-     * @param destination
-     * @param asdu
-     */
-    public void onGroupRead(KNXBridgeBaseThingHandler bridge, IndividualAddress source, GroupAddress destination,
-            byte[] asdu);
-
-    /**
-     *
-     * Called when the KNX bridge receives a group read response telegram
-     *
-     * @param bridge
-     * @param destination
-     * @param asdu
-     */
-    public void onGroupReadResponse(KNXBridgeBaseThingHandler bridge, IndividualAddress source,
-            GroupAddress destination, byte[] asdu);
-
 }

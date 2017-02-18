@@ -81,6 +81,7 @@ import org.openhab.binding.knx.IndividualAddressListener;
 import org.openhab.binding.knx.KNXBindingConstants;
 import org.openhab.binding.knx.KNXBusListener;
 import org.openhab.binding.knx.KNXProjectProvider;
+import org.openhab.binding.knx.TelegramListener;
 import org.openhab.binding.knx.internal.dpt.KNXCoreTypeMapper;
 import org.openhab.binding.knx.internal.dpt.KNXTypeMapper;
 import org.openhab.binding.knx.internal.factory.KNXHandlerFactory;
@@ -427,9 +428,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
                 @Override
                 public void detached(DetachEvent e) {
-                    logger.error("Received detach Event from {}", e.getSource());
-                    logger.trace("DE {} ZipJob Done {} Cancelled {}", Thread.currentThread().getName(), zipJob.isDone(),
-                            zipJob.isCancelled());
+                    logger.error("The KNX network link was detached from the process communicator", e.getSource());
                 }
 
                 @Override
@@ -478,8 +477,6 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             errorsSinceStart = 0;
             errorsSinceInterval = 0;
 
-            logger.trace("{} ZipJob Done {} Cancelled {}", Thread.currentThread().getName(), zipJob.isDone(),
-                    zipJob.isCancelled());
             busJob = scheduler.scheduleWithFixedDelay(new BusRunnable(), 0,
                     ((BigDecimal) getConfig().get(READING_PAUSE)).intValue(), TimeUnit.MILLISECONDS);
 
@@ -653,9 +650,32 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                 if (!readDatapoints.contains(retryDatapoint)) {
                     readDatapoints.add(retryDatapoint);
                 } else {
-                    logger.info("A read request for datapoint '{}' is already queued", datapoint.getMainAddress());
+                    // logger.info("A read request for datapoint '{}' is already queued", datapoint.getMainAddress());
                 }
             }
+        }
+    }
+
+    private class OnGroupWriteRunnable implements Runnable {
+
+        TelegramListener listener;
+        KNXBridgeBaseThingHandler bridge;
+        IndividualAddress source;
+        GroupAddress destination;
+        byte[] asdu;
+
+        public OnGroupWriteRunnable(TelegramListener listener, KNXBridgeBaseThingHandler bridge,
+                IndividualAddress source, GroupAddress destination, byte[] asdu) {
+            this.listener = listener;
+            this.bridge = bridge;
+            this.source = source;
+            this.destination = destination;
+            this.asdu = asdu;
+        }
+
+        @Override
+        public void run() {
+            listener.onGroupWrite(bridge, source, destination, asdu);
         }
     }
 
@@ -681,24 +701,15 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
             for (IndividualAddressListener listener : individualAddressListeners) {
                 if (listener.listensTo(source)) {
-                    if (listener instanceof GroupAddressListener
-                            && ((GroupAddressListener) listener).listensTo(destination)) {
-                        listener.onGroupWrite(this, source, destination, asdu);
-                    } else {
-                        listener.onGroupWrite(this, source, destination, asdu);
-                    }
-
+                    scheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
+                            TimeUnit.SECONDS);
                 }
             }
 
             for (GroupAddressListener listener : groupAddressListeners) {
                 if (listener.listensTo(destination)) {
-                    if (listener instanceof IndividualAddressListener
-                            && !((IndividualAddressListener) listener).listensTo(source)) {
-                        listener.onGroupWrite(this, source, destination, asdu);
-                    } else {
-                        listener.onGroupWrite(this, source, destination, asdu);
-                    }
+                    scheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
+                            TimeUnit.SECONDS);
                 }
             }
 
@@ -818,7 +829,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             // ProcessCommunicator pc = getCommunicator();
             Datapoint datapoint = new CommandDP(address, getThing().getUID().toString(), 0, dpt);
 
-            if (pc != null && datapoint != null) {
+            if (pc != null && datapoint != null && link != null && link.isOpen()) {
                 try {
                     String mappedValue = toDPTValue(value, datapoint.getDPT());
                     if (mappedValue != null) {

@@ -150,6 +150,8 @@ public class KNXGenericThingHandler extends BaseThingHandler
                             .addAll(knxChannelSelectorProxy.getWriteAddresses(selector, channelConfiguration, null));
                     groupAddresses
                             .addAll(knxChannelSelectorProxy.getTransmitAddresses(selector, channelConfiguration, null));
+                    groupAddresses
+                            .addAll(knxChannelSelectorProxy.getUpdateAddresses(selector, channelConfiguration, null));
                 } catch (KNXFormatException e) {
                     logger.error(
                             "An exception occurred while adding a group address to the addresses to be listened to : '{}'",
@@ -457,6 +459,7 @@ public class KNXGenericThingHandler extends BaseThingHandler
                             if (convertedType != null) {
                                 for (GroupAddress address : knxChannelSelectorProxy.getWriteAddresses(selector,
                                         channelConfiguration, convertedType)) {
+                                    blockedChannels.add(channelUID);
                                     ((KNXBridgeBaseThingHandler) getBridge().getHandler()).writeToKNX(address,
                                             knxChannelSelectorProxy.getDPT(address, selector, channelConfiguration,
                                                     convertedType),
@@ -494,24 +497,29 @@ public class KNXGenericThingHandler extends BaseThingHandler
     public void onGroupWrite(KNXBridgeBaseThingHandler bridge, IndividualAddress source, GroupAddress destination,
             byte[] asdu) {
 
-        for (Channel channel : getThing().getChannels()) {
-            Configuration channelConfiguration = channel.getConfiguration();
+        logger.trace("Thing {} received a Group Write telegram from '{}' for destination '{}'", getThing().getUID(),
+                source, destination);
 
+        for (Channel channel : getThing().getChannels()) {
             KNXChannelSelector selector = KNXChannelSelector
                     .getValueSelectorFromChannelTypeId(channel.getChannelTypeUID().getId());
 
             if (selector != null) {
                 try {
+                    Configuration channelConfiguration = channel.getConfiguration();
                     Set<GroupAddress> addresses = knxChannelSelectorProxy.getReadAddresses(selector,
                             channelConfiguration, null);
                     addresses
                             .addAll(knxChannelSelectorProxy.getTransmitAddresses(selector, channelConfiguration, null));
 
-                    for (GroupAddress address : addresses) {
+                    if (addresses.contains(destination)) {
+                        logger.trace("Thing {} processes a Group Write telegram for destination '{}' for channel '{}'",
+                                getThing().getUID(), destination, channel.getUID());
                         processDataReceived(bridge, destination, asdu,
-                                knxChannelSelectorProxy.getDPT(address, selector, channelConfiguration, null), address,
+                                knxChannelSelectorProxy.getDPT(destination, selector, channelConfiguration, null),
                                 channel.getUID());
                     }
+
                 } catch (KNXFormatException e) {
                     logger.error("An exception occurred while writing to the KNX bus : '{}'", e.getMessage(), e);
                 }
@@ -520,55 +528,53 @@ public class KNXGenericThingHandler extends BaseThingHandler
     }
 
     private void processDataReceived(KNXBridgeBaseThingHandler bridge, GroupAddress destination, byte[] asdu,
-            String dpt, GroupAddress channelAddress, ChannelUID channelUID) {
+            String dpt, ChannelUID channelUID) {
 
-        if (channelAddress != null && dpt != null) {
+        if (dpt != null) {
 
             if (KNXCoreTypeMapper.toTypeClass(dpt) == null) {
                 logger.warn("DPT " + dpt + " is not supported by the KNX binding.");
                 return;
             }
 
-            if (channelAddress.equals(destination)) {
+            Datapoint datapoint = new CommandDP(destination, getThing().getUID().toString(), 0, dpt);
+            Type type = bridge.getType(destination, dpt, asdu);
 
-                Datapoint datapoint = new CommandDP(destination, getThing().getUID().toString(), 0, dpt);
-                Type type = bridge.getType(destination, dpt, asdu);
+            if (type != null) {
+                // bridge.logEvent(EventSource.EMPTY, channelUID, type);
 
-                if (type != null) {
-                    // bridge.logEvent(EventSource.EMPTY, channelUID, type);
-
-                    Set<String> linkedItems = itemChannelLinkRegistry.getLinkedItemNames(channelUID);
-                    for (String anItem : linkedItems) {
-                        Set<ChannelUID> boundChannels = itemChannelLinkRegistry.getBoundChannels(anItem);
-                        for (ChannelUID aBoundChannel : boundChannels) {
-                            if (aBoundChannel.getBindingId().equals(getThing().getUID().getBindingId())
-                                    && !aBoundChannel.getAsString().equals(channelUID.getAsString())) {
-                                logger.trace("Adding channel '{}' of Item '{}' the list of blocked channels",
-                                        aBoundChannel, anItem);
-                                blockedChannels.add(aBoundChannel);
-                            }
+                Set<String> linkedItems = itemChannelLinkRegistry.getLinkedItemNames(channelUID);
+                for (String anItem : linkedItems) {
+                    Set<ChannelUID> boundChannels = itemChannelLinkRegistry.getBoundChannels(anItem);
+                    for (ChannelUID aBoundChannel : boundChannels) {
+                        if (aBoundChannel.getBindingId().equals(getThing().getUID().getBindingId())
+                                && !aBoundChannel.getAsString().equals(channelUID.getAsString())) {
+                            logger.trace("Adding channel '{}' of Item '{}' the list of blocked channels", aBoundChannel,
+                                    anItem);
+                            blockedChannels.add(aBoundChannel);
                         }
                     }
-                    if (type instanceof State) {
-                        updateState(channelUID, (State) type);
-                    } else {
-                        postCommand(channelUID, (Command) type);
-                    }
-                } else {
-                    final char[] hexCode = "0123456789ABCDEF".toCharArray();
-                    StringBuilder sb = new StringBuilder(2 + asdu.length * 2);
-                    sb.append("0x");
-                    for (byte b : asdu) {
-                        sb.append(hexCode[(b >> 4) & 0xF]);
-                        sb.append(hexCode[(b & 0xF)]);
-                    }
-
-                    logger.warn(
-                            "Ignoring KNX bus data: couldn't transform to an openHAB type (not supported). Destination='{}', datapoint='{}', data='{}'",
-                            new Object[] { destination.toString(), datapoint.toString(), sb.toString() });
-                    return;
                 }
+                if (type instanceof State) {
+                    updateState(channelUID, (State) type);
+                } else {
+                    postCommand(channelUID, (Command) type);
+                }
+            } else {
+                final char[] hexCode = "0123456789ABCDEF".toCharArray();
+                StringBuilder sb = new StringBuilder(2 + asdu.length * 2);
+                sb.append("0x");
+                for (byte b : asdu) {
+                    sb.append(hexCode[(b >> 4) & 0xF]);
+                    sb.append(hexCode[(b & 0xF)]);
+                }
+
+                logger.warn(
+                        "Ignoring KNX bus data: couldn't transform to an openHAB type (not supported). Destination='{}', datapoint='{}', data='{}'",
+                        new Object[] { destination.toString(), datapoint.toString(), sb.toString() });
+                return;
             }
+
         }
     }
 
@@ -598,7 +604,7 @@ public class KNXGenericThingHandler extends BaseThingHandler
                         return;
                     }
 
-                    logger.trace("Reading the 'Read'able Group Address '{}' with DPT '{}'", address, dpt);
+                    // logger.trace("Reading the 'Read'able Group Address '{}' with DPT '{}'", address, dpt);
                     Datapoint datapoint = new CommandDP(address, getThing().getUID().toString(), 0, dpt);
                     ((KNXBridgeBaseThingHandler) getBridge().getHandler()).readDatapoint(datapoint,
                             ((KNXBridgeBaseThingHandler) getBridge().getHandler()).getReadRetriesLimit());
