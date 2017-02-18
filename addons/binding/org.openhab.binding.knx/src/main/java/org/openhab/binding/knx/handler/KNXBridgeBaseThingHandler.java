@@ -292,6 +292,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
     Runnable reconnectRunnable = new Runnable() {
         @Override
         public void run() {
+            logger.trace("ReconnectRunnable running");
             if (shutdown) {
                 reconnectJob.cancel(true);
             } else {
@@ -309,6 +310,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
     public synchronized void connect() {
         try {
+
+            logger.trace("Connecting to the KNX bus");
             shutdown = false;
 
             if (mp != null) {
@@ -854,7 +857,8 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                     }
                 }
             } else {
-                logger.error("Could not get hold of KNX Process Communicator");
+                logger.error("Can not write to the KNX bus (pc {}, link {})", pc == null ? "Not OK" : "OK",
+                        link == null ? "Not OK" : "OK");
                 reconnectJob = scheduler.scheduleWithFixedDelay(reconnectRunnable,
                         ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
                         ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
