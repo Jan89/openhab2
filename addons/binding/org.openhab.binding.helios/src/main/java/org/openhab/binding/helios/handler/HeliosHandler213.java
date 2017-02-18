@@ -427,9 +427,12 @@ public class HeliosHandler213 extends BaseThingHandler {
 
             Response response = null;
             try {
+                long now = System.currentTimeMillis();
                 response = logTarget.resolveTemplate("ip", ipAddress).resolveTemplate("cmd", PULL)
                         .queryParam("id", logSubscriptionID).queryParam("timeout", HELIOS_PULL_DURATION)
                         .request(MediaType.APPLICATION_JSON_TYPE).get();
+                logger.trace("Pulled logs in {} millseconds from {}", System.currentTimeMillis() - now,
+                        getThing().getUID());
             } catch (Exception e) {
                 logger.error("An exception occurred while pulling log entries from the Helios IP Vario '{}' : '{}'",
                         getThing().getUID().toString(), e.getMessage());
