@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -80,6 +81,8 @@ public class KNXGenericThingHandler extends BaseThingHandler
     private ScheduledFuture<?> pollingJob;
     private ScheduledFuture<?> descriptionJob;
 
+    ScheduledExecutorService knxScheduler;
+
     private static final long POLLING_INTERVAL = 60000;
     private static final long OPERATION_TIMEOUT = 5000;
     private static final long OPERATION_INTERVAL = 2000;
@@ -116,6 +119,10 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
     @Override
     public void initialize() {
+
+        knxScheduler = ((KNXBridgeBaseThingHandler) getBridge().getHandler()).getScheduler();
+        logger.trace("Setting the scheduler for {} to {}", getThing().getUID(), knxScheduler.toString());
+
         try {
             if (StringUtils.isNotBlank((String) getConfig().get(ADDRESS)) && ((Boolean) getConfig().get(FETCH))) {
                 address = new IndividualAddress((String) getConfig().get(ADDRESS));
@@ -125,8 +132,8 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
                 if ((pollingJob == null || pollingJob.isCancelled())) {
                     logger.trace("'{}' will be polled every {} ms", getThing().getUID(), pollingInterval);
-                    pollingJob = scheduler.scheduleWithFixedDelay(pollingRunnable, pollingInterval / 4, pollingInterval,
-                            TimeUnit.MILLISECONDS);
+                    pollingJob = knxScheduler.scheduleWithFixedDelay(pollingRunnable, pollingInterval / 4,
+                            pollingInterval, TimeUnit.MILLISECONDS);
                 }
             } else {
                 updateStatus(ThingStatus.ONLINE);
@@ -194,8 +201,6 @@ public class KNXGenericThingHandler extends BaseThingHandler
     @Override
     public void channelLinked(ChannelUID channelUID) {
 
-        logger.trace("Channel '{}' got linked, scheduling read jobs", channelUID);
-
         Configuration channelConfiguration = getThing().getChannel(channelUID.getId()).getConfiguration();
         Boolean mustRead = (Boolean) channelConfiguration.get(READ);
         BigDecimal readInterval = (BigDecimal) channelConfiguration.get(INTERVAL);
@@ -254,12 +259,12 @@ public class KNXGenericThingHandler extends BaseThingHandler
 
     private void scheduleReadJob(GroupAddress groupAddress, String dpt, boolean mustRead, BigDecimal readInterval) {
 
-        if (mustRead) {
-            scheduler.schedule(new ReadRunnable(groupAddress, dpt), 0, TimeUnit.SECONDS);
+        if (mustRead && knxScheduler != null) {
+            knxScheduler.schedule(new ReadRunnable(groupAddress, dpt), 0, TimeUnit.SECONDS);
         }
 
-        if (readInterval != null && readInterval.intValue() > 0) {
-            readFutures.add(scheduler.scheduleWithFixedDelay(new ReadRunnable(groupAddress, dpt),
+        if (readInterval != null && readInterval.intValue() > 0 && knxScheduler != null) {
+            readFutures.add(knxScheduler.scheduleWithFixedDelay(new ReadRunnable(groupAddress, dpt),
                     readInterval.intValue(), readInterval.intValue(), TimeUnit.SECONDS));
         }
     }
@@ -629,7 +634,7 @@ public class KNXGenericThingHandler extends BaseThingHandler
                         updateStatus(ThingStatus.ONLINE);
                         if (!filledDescription) {
                             if (descriptionJob == null || descriptionJob.isCancelled()) {
-                                descriptionJob = scheduler.schedule(descriptionRunnable, 0, TimeUnit.MILLISECONDS);
+                                descriptionJob = knxScheduler.schedule(descriptionRunnable, 0, TimeUnit.MILLISECONDS);
                             }
                         }
                     } else {

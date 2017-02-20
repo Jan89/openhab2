@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
@@ -85,6 +86,7 @@ import org.openhab.binding.knx.TelegramListener;
 import org.openhab.binding.knx.internal.dpt.KNXCoreTypeMapper;
 import org.openhab.binding.knx.internal.dpt.KNXTypeMapper;
 import org.openhab.binding.knx.internal.factory.KNXHandlerFactory;
+import org.openhab.binding.knx.internal.factory.KNXThreadPoolFactory;
 import org.openhab.binding.knx.internal.logging.LogAdapter;
 import org.openhab.binding.knx.internal.parser.KNXProject13Parser;
 import org.openhab.binding.knx.internal.parser.KNXProjectParser;
@@ -158,10 +160,12 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
     private final LogAdapter logAdapter = new LogAdapter();
 
     // Data structures related to the various jobs
-    private ScheduledFuture<?> reconnectJob;
+    private ScheduledFuture<?> connectJob;
     private ScheduledFuture<?> busJob;
-    private ScheduledFuture<?> zipJob;
     private List<ScheduledFuture<?>> readFutures = new ArrayList<ScheduledFuture<?>>();
+    private Boolean connectLock = false;
+
+    private ScheduledExecutorService knxScheduler;
 
     public boolean shutdown = false;
     private long intervalTimestamp;
@@ -195,14 +199,24 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
         updateStatus(ThingStatus.UNKNOWN);
 
-        scheduler.schedule(connectRunnable, 0, TimeUnit.SECONDS);
+        shutdown = false;
+
+        if (knxScheduler == null) {
+            knxScheduler = KNXThreadPoolFactory.getPrioritizedScheduledPool(getThing().getUID().getBindingId(), 5);
+        }
+
+        logger.trace("Scheduling the connection attempt to the KNX bus");
+        connectJob = knxScheduler.schedule(connectRunnable,
+                ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
     }
 
     @Override
     public void dispose() {
 
-        if (reconnectJob != null) {
-            reconnectJob.cancel(true);
+        shutdown = true;
+
+        if (connectJob != null) {
+            connectJob.cancel(true);
         }
 
         disconnect();
@@ -285,34 +299,39 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
     Runnable connectRunnable = new Runnable() {
         @Override
         public void run() {
-            connect();
-        }
-    };
-
-    Runnable reconnectRunnable = new Runnable() {
-        @Override
-        public void run() {
-            logger.trace("ReconnectRunnable running");
             if (shutdown) {
-                reconnectJob.cancel(true);
+                connectJob.cancel(true);
+                updateStatus(ThingStatus.ONLINE);
             } else {
                 updateStatus(ThingStatus.OFFLINE);
-
-                logger.info("Trying to reconnect to KNX...");
                 connect();
-
-                if (link.isOpen()) {
-                    reconnectJob.cancel(true);
-                }
             }
         }
     };
 
-    public synchronized void connect() {
+    // Runnable reconnectRunnable = new Runnable() {
+    // @Override
+    // public void run() {
+    // logger.trace("ReconnectRunnable running");
+    // if (shutdown) {
+    // reconnectJob.cancel(true);
+    // } else {
+    // updateStatus(ThingStatus.OFFLINE);
+    //
+    // logger.info("Trying to reconnect to KNX...");
+    // connect();
+    //
+    // if (link.isOpen()) {
+    // reconnectJob.cancel(true);
+    // }
+    // }
+    // }
+    // };
+
+    public void connect() {
         try {
 
             logger.trace("Connecting to the KNX bus");
-            shutdown = false;
 
             if (mp != null) {
                 mp.detach();
@@ -345,9 +364,12 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                             logger.info("KNX link will be retried in "
                                     + ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue() + " seconds");
 
-                            reconnectJob = scheduler.scheduleWithFixedDelay(reconnectRunnable,
-                                    ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
-                                    ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
+                            if (connectJob.isDone()) {
+                                logger.debug("NLL is scheduling a connection attempt");
+                                connectJob = knxScheduler.schedule(connectRunnable,
+                                        ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
+                                        TimeUnit.SECONDS);
+                            }
                         }
                     }
                 }
@@ -480,8 +502,10 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             errorsSinceStart = 0;
             errorsSinceInterval = 0;
 
-            busJob = scheduler.scheduleWithFixedDelay(new BusRunnable(), 0,
-                    ((BigDecimal) getConfig().get(READING_PAUSE)).intValue(), TimeUnit.MILLISECONDS);
+            if (busJob == null) {
+                busJob = knxScheduler.scheduleWithFixedDelay(new BusRunnable(), 0,
+                        ((BigDecimal) getConfig().get(READING_PAUSE)).intValue(), TimeUnit.MILLISECONDS);
+            }
 
             updateStatus(ThingStatus.ONLINE);
 
@@ -490,13 +514,22 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             disconnect();
             updateStatus(ThingStatus.OFFLINE);
         }
+
+        try {
+            synchronized (connectLock) {
+                logger.debug("Notifying the end of the connection attempt");
+                connectLock.notifyAll();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    public synchronized void disconnect() {
-        shutdown = true;
+    public void disconnect() {
 
         if (busJob != null) {
             busJob.cancel(true);
+            busJob = null;
         }
 
         if (readFutures != null) {
@@ -514,6 +547,14 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             pc.detach();
         }
 
+        if (mp != null) {
+            mp.detach();
+        }
+
+        if (mc != null) {
+            mc.detach();
+        }
+
         if (nll != null) {
             link.removeLinkListener(nll);
         }
@@ -521,6 +562,7 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
         if (link != null) {
             link.close();
         }
+
     }
 
     @Override
@@ -538,7 +580,24 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
         @Override
         public void run() {
 
-            if (getThing().getStatus() == ThingStatus.ONLINE && pc != null) {
+            synchronized (connectLock) {
+                while (!(getThing().getStatus() == ThingStatus.ONLINE)) {
+                    if (connectJob.isDone()) {
+                        logger.debug("BusRunnable is scheduling a connection attempt");
+                        connectJob = knxScheduler.schedule(connectRunnable,
+                                ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
+                    }
+                    try {
+                        logger.trace("BusRunnable waiting for the connection to the KNX bus to be established");
+                        connectLock.wait();
+                    } catch (InterruptedException e) {
+                        logger.debug("BusRunnable is interrupted while waiting for a connection to the KNX bus : '{}'",
+                                e.getMessage(), e);
+                    }
+                }
+            }
+
+            if (getThing().getStatus() == ThingStatus.ONLINE) {
 
                 RetryDatapoint datapoint = readDatapoints.poll();
 
@@ -554,9 +613,11 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                     } catch (KNXException e) {
                         logger.warn("Cannot read value for datapoint '{}' from KNX bus: {}",
                                 datapoint.getDatapoint().getMainAddress(), e.getMessage());
+
                     } catch (KNXIllegalArgumentException e) {
                         logger.warn("Error sending KNX read request for datapoint '{}': {}",
                                 datapoint.getDatapoint().getMainAddress(), e.getMessage());
+                        updateStatus(ThingStatus.OFFLINE);
                     } catch (InterruptedException e) {
                         logger.warn("Error sending KNX read request for datapoint '{}': {}",
                                 datapoint.getDatapoint().getMainAddress(), e.getMessage());
@@ -704,14 +765,14 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
 
             for (IndividualAddressListener listener : individualAddressListeners) {
                 if (listener.listensTo(source)) {
-                    scheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
+                    knxScheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
                             TimeUnit.SECONDS);
                 }
             }
 
             for (GroupAddressListener listener : groupAddressListeners) {
                 if (listener.listensTo(destination)) {
-                    scheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
+                    knxScheduler.schedule(new OnGroupWriteRunnable(listener, this, source, destination, asdu), 0,
                             TimeUnit.SECONDS);
                 }
             }
@@ -832,7 +893,24 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             // ProcessCommunicator pc = getCommunicator();
             Datapoint datapoint = new CommandDP(address, getThing().getUID().toString(), 0, dpt);
 
-            if (pc != null && datapoint != null && link != null && link.isOpen()) {
+            synchronized (connectLock) {
+                while (!(getThing().getStatus() == ThingStatus.ONLINE)) {
+                    if (connectJob.isDone()) {
+                        logger.debug("writeToKNX is scheduling a connection attempt");
+                        connectJob = knxScheduler.schedule(connectRunnable,
+                                ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
+                    }
+                    try {
+                        logger.trace("writeToKNX waiting for the connection to the KNX bus to be established");
+                        connectLock.wait();
+                    } catch (InterruptedException e) {
+                        logger.debug("writeToKNX is interrupted while waiting for a connection to the KNX bus : '{}'",
+                                e.getMessage(), e);
+                    }
+                }
+            }
+
+            if (datapoint != null && getThing().getStatus() == ThingStatus.ONLINE) {
                 try {
                     String mappedValue = toDPTValue(value, datapoint.getDPT());
                     if (mappedValue != null) {
@@ -854,15 +932,14 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                         logger.error(
                                 "Value '{}' could not be sent to the KNX bus using datapoint '{}' - giving up after second try: {}",
                                 new Object[] { value, datapoint, e1.getMessage() });
+                        updateStatus(ThingStatus.OFFLINE);
                     }
                 }
             } else {
                 logger.error("Can not write to the KNX bus (pc {}, link {})", pc == null ? "Not OK" : "OK",
-                        link == null ? "Not OK" : "OK");
-                reconnectJob = scheduler.scheduleWithFixedDelay(reconnectRunnable,
-                        ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(),
-                        ((BigDecimal) getConfig().get(AUTO_RECONNECT_PERIOD)).intValue(), TimeUnit.SECONDS);
+                        link == null ? "Not OK" : (link.isOpen() ? "Open" : "Closed"));
             }
+
         }
     }
 
@@ -1178,7 +1255,12 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                     removeProject(file);
                 }
 
-                zipJob = scheduler.schedule(new ZipRunnable(file, openInputStream), 0, TimeUnit.SECONDS);
+                if (knxScheduler == null) {
+                    knxScheduler = KNXThreadPoolFactory.getPrioritizedScheduledPool(getThing().getUID().getBindingId(),
+                            5);
+                }
+
+                knxScheduler.schedule(new ZipRunnable(file, openInputStream), 0, TimeUnit.SECONDS);
             }
 
         } catch (IOException e) {
@@ -1355,6 +1437,11 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
                             }
                         }
                     }
+
+                    HashMap<ThingUID, Thing> oldThings = providedThings.get(file);
+                    knxScheduler = KNXThreadPoolFactory.getPrioritizedScheduledPool(getThing().getUID().getBindingId(),
+                            oldThings.keySet().size() / 10);
+
                 }
 
                 // Free some memory
@@ -1434,5 +1521,9 @@ public abstract class KNXBridgeBaseThingHandler extends BaseBridgeHandler implem
             }
         }
         return false;
+    }
+
+    public ScheduledExecutorService getScheduler() {
+        return knxScheduler;
     }
 }
